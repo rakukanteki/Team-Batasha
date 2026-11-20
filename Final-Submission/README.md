@@ -19,7 +19,7 @@ This folder is an exact copy of the files that flew runs `261120_082545_FINAL_SU
 
 ## Files
 
-- `Controller.py`, `Systems/`: the controller code the sim runs. All plans in `Systems/plans/` are imported by the planner registry, so they all stay.
+- `Controller.py`, `Systems/`: the controller code the sim runs. `Systems/plans/` keeps only Plan 17 and the plans it builds on (6, 8, 9, 10, 11, 13, 14, 16). The unused plans 1-5, 7 and 15 were removed along with their registry imports; the flight code itself is unchanged.
 - `requirements.txt`: Python packages the controller needs.
 - `Batasha-sim-logs.zip`: the two engine log folders.
 - `CLAIM.md`: the claimed time, fuel and damage.

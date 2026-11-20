@@ -27,13 +27,7 @@ from Systems.plans.common import (  # noqa: F401
     _start_slope,
     _to_nodes,
 )
-from Systems.plans.plan_1_fewest_points import plan1, repair, search  # noqa: F401
-from Systems.plans.plan_2_linear_program import AIMBOX, DIR8, YMAX, _lp_path, _lp_solve, plan2  # noqa: F401
-from Systems.plans.plan_3_lattice import DS, GRID, NCELL, NQ, W_DEV, YY, _lattice, _previous, plan3  # noqa: F401
-from Systems.plans.plan_4_team_pipeline import plan4  # noqa: F401
-from Systems.plans.plan_5_conjunction import _push, plan5  # noqa: F401
 from Systems.plans.plan_6_barrier import barrier, plan6  # noqa: F401
-from Systems.plans.plan_7_velocity_obstacle import HOLDS, HOLDS_WIDE, P_WIDE, plan7  # noqa: F401
 from Systems.plans.plan_10_real_calibrated import (  # noqa: F401
     KEEP_BAND,
     LA_MULTS,
