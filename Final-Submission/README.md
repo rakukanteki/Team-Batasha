@@ -1,6 +1,6 @@
 # Team Batasha — code used for the submitted runs
 
-This folder is an exact copy of the files that flew the three runs in this video (engine logs `261120_033653_FINAL_SUBMISSION__801`, `261120_034030_FINAL_SUBMISSION__4c4`, `261120_034406_FINAL_SUBMISSION__ef8`), taken file by file from commit `68d0967` (branch `faysal/plan17-guard`).
+This folder is an exact copy of the files that flew runs `261120_082545_FINAL_SUBMISSION__2bc` and `261120_082915_FINAL_SUBMISSION__b21`, taken file by file from commit `e9dfff2` (branch `faysal/plan17-guard`; same flight settings as `68d0967`, plus opt-in pulse-check and trust-gate code paths that are switched off).
 
 ## What runs in the sim
 

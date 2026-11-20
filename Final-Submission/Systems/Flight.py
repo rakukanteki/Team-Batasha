@@ -348,9 +348,16 @@ class Flight:
         self.guard_pulse_accel = pulse_accel
         accel = pulse_accel or C.A_TRIM
         ts = np.linspace(0.0, max(2.0 * tca[i], 10.0), 60)
-        q = (dr[watch][None, :, None, :] + w[watch][None, :, None, :] * ts[None, None, :, None]
-             + 0.5 * accel * cands[:, None, None, :] * ts[None, None, :, None] ** 2)
-        clear = (np.linalg.norm(q, axis=3).min(2) - need[watch][None]).min(1)
+
+        def clearance(a):
+            q = (dr[watch][None, :, None, :] + w[watch][None, :, None, :] * ts[None, None, :, None]
+                 + 0.5 * a * cands[:, None, None, :] * ts[None, None, :, None] ** 2)
+            return (np.linalg.norm(q, axis=3).min(2) - need[watch][None]).min(1)
+        clear = clearance(accel)
+        if pulse_accel and cfg.get("guard_pulse_check") and clear.max() < cfg.get("guard_pulse_margin_m", 2.0):
+            # A gentle pulse cannot clear this rock in time (live run 261119_223116 was hit this way): full thrust.
+            self.guard_pulse_accel = 0.0
+            clear = clearance(C.A_TRIM)
         return cands[int(np.argmax(clear))]
 
     # -- every tick -------------------------------------------------------------------------------------------
@@ -379,6 +386,7 @@ class Flight:
         self._replan(t, r, v, fuel)
         near = self._nearby(t, r)
         maneuver = maneuver_of(self.plan)
+        invalidated = False
         if maneuver is not None and t >= self.maneuver_check_t:
             self.maneuver_check_t = t + 0.2
             if not maneuver.check(t, r, v, near):
@@ -389,6 +397,7 @@ class Flight:
                 self.next_replan = t
                 self.burning = False
                 maneuver = None
+                invalidated = True
         nodes, vc = self.plan[:2] if self.plan is not None else ([C.T], C.resolve_vc(self.config))   # straight until the first plan arrives
         late = float(self.config.get("late_after_m", 0.0) or 0.0) if self.config else 0.0
         if late > 0.0 and (r - C.S) @ C.SH > late:                         # the clear last stretch: cruise faster
@@ -403,6 +412,7 @@ class Flight:
         self.barrier_active = False
         frame = bool(self.config.get("frame_accel", False)) if self.config else False
         main_min = float(self.config.get("main_min", C.MAIN_MIN)) if self.config else C.MAIN_MIN
+        ignite_dv = self.config.get("ignite_dv_mps", C.EPS_ON)
         guard_plan = self.config.get("guard_plan", False) if self.config else False
         last = idx == len(nodes) - 1
         radius_key = "coast_docking_radius_m" if last else "coast_waypoint_radius_m"
@@ -421,10 +431,19 @@ class Flight:
         if near is not None:
             vg0 = acc0 = None
             trust = self.config.get("guard_trust_plan", False) and not self.guarding
-            if (guard_plan or (trust and maneuver is None)) and not coast_clear:
+            trust_route = trust and maneuver is None
+            trust_gate = self.config.get("guard_trust_gate", False)
+            if trust_route and trust_gate:
+                launch_height = self.config.get("launch_burn_height_m")
+                in_launch = launch_height is not None and (r - C.S) @ (C.S / np.linalg.norm(C.S)) < launch_height
+                trust_route = (not invalidated and self.plan is not None and not in_launch
+                               and t >= C.hold_of(self.plan)
+                               and t - self.plan_t <= self.config.get("guard_trust_max_age_s", 6.0))
+            if (guard_plan or trust_route) and not coast_clear:
                 i0 = min(self.idx, len(nodes) - 1); vg0, _ = C.to_gain(r, v, nodes[i0], vc, frame=frame)
                 n0 = float(np.linalg.norm(vg0)); main0 = self.main if self.burning else n0 > main_min
-                acc0 = (C.A_BURN if main0 else C.A_TRIM) if (self.burning or n0 > C.EPS_ON) else 0.0
+                guard_ignite_dv = ignite_dv if trust_route and trust_gate else C.EPS_ON
+                acc0 = (C.A_BURN if main0 else C.A_TRIM) if (self.burning or n0 > guard_ignite_dv) else 0.0
             # A schedule that passes its own 30 s check (hard + 2 sigma + 1 m) already clears every rock the escape guard
             # would flag; the guard only judges a coast and would fight the burn that makes the clearance (engine 100758).
             if trust and maneuver is not None and maneuver.check(t, r, v, near):
@@ -512,7 +531,6 @@ class Flight:
         if coast_clear:
             self.burning = False
             return "coast", np.zeros(3)
-        ignite_dv = self.config.get("ignite_dv_mps", C.EPS_ON)
         stop_dv = self.config.get("stop_dv_mps", 0.0)
         if not self.burning and ng > ignite_dv and not (last and dist < C.TERMINAL):
             self.burning = True; self.main = ng > main_min
