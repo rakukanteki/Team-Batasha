@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Score visualizer</title>
+<style>
+:root { --bg:#ffffff; --fg:#1c1f24; --mut:#667085; --line:#d9dde3; --card:#f5f6f8; --acc:#2563eb; --ok:#15803d; --bad:#b91c1c; --wait:#9ca3af; --accel:#f59e0b; --cruise:#3b82f6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14171c; --fg:#e6e8eb; --mut:#9aa3af; --line:#2d333b; --card:#1b1f26; --acc:#60a5fa; --ok:#4ade80; --bad:#f87171; --wait:#6b7280; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width:1180px; margin:0 auto; padding:16px; }
+h1 { font-size:20px; margin:0 0 2px; }
+.sub { color:var(--mut); margin:0 0 14px; }
+.grid { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr); gap:16px; align-items:start; }
+@media (max-width:860px) { .grid { grid-template-columns:1fr; } }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+canvas { width:100%; display:block; border-radius:8px; touch-action:none; cursor:grab; background:var(--bg); border:1px solid var(--line); }
+canvas:active { cursor:grabbing; }
+.row { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0; align-items:center; }
+button { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; }
+button[aria-pressed="true"] { border-color:var(--acc); color:var(--acc); font-weight:600; }
+.legend { position:relative; margin:10px 6px 22px; }
+.legend b { display:block; height:10px; border-radius:3px; border:1px solid var(--line); background:linear-gradient(90deg, rgb(192,57,43) 0%, rgb(243,234,205) 25%, rgb(37,99,235) 50%, rgb(30,58,138) 100%); }
+.legend span { position:absolute; top:13px; transform:translateX(-50%); font-size:11px; color:var(--mut); }
+.legend span:last-child { transform:translateX(-100%); }
+.legend span:first-of-type { transform:none; }
+.hint { color:var(--mut); font-size:12px; margin:8px 0 0; }
+label { display:grid; grid-template-columns:1fr auto; gap:2px 8px; margin:0 0 10px; }
+label span { color:var(--mut); }
+label output { font-variant-numeric:tabular-nums; }
+label input { grid-column:1 / 3; width:100%; accent-color:var(--acc); }
+.coords { display:grid; grid-template-columns:52px repeat(3, 1fr); gap:6px; align-items:center; margin:0 0 10px; }
+.coords span { color:var(--mut); }
+.coords input { width:100%; min-width:0; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-variant-numeric:tabular-nums; }
+h2 { font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--mut); margin:14px 0 8px; }
+h2:first-child { margin-top:0; }
+table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+td { padding:3px 0; vertical-align:top; } td:last-child { text-align:right; padding-left:10px; }
+tr.total td { border-top:1px solid var(--line); font-weight:700; }
+tr.sub td { color:var(--mut); }
+.key { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:baseline; }
+code { font:12px ui-monospace, Menlo, Consolas, monospace; }
+#formula { font-size:12px; color:var(--mut); margin:8px 0 0; word-break:break-word; }
+.bar { display:grid; grid-template-columns:92px 1fr 52px; gap:8px; align-items:center; margin:0 0 6px; font-size:13px; }
+.bar i { position:relative; height:12px; background:var(--bg); border:1px solid var(--line); border-radius:3px; }
+.bar i::before { content:""; position:absolute; left:50%; top:-2px; bottom:-2px; border-left:1px solid var(--mut); }
+.bar b { position:absolute; top:0; bottom:0; border-radius:2px; }
+.bar em { font-style:normal; text-align:right; font-variant-numeric:tabular-nums; }
+.tl { display:flex; height:22px; border-radius:4px; overflow:hidden; border:1px solid var(--line); background:var(--bg); }
+.tl span { display:block; height:100%; }
+.lg { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--mut); margin:6px 0 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Score visualizer</h1>
+  <p class="sub">The competition score as a surface over flight time and fuel. Each tab sets the point on it in a different way.</p>
+  <div class="row" id="tabs" style="margin:0 0 12px">
+    <button data-tab="basic" aria-pressed="true">Basic: fuel, time, damage</button>
+    <button data-tab="trip" aria-pressed="false">Trip: time and distance</button>
+    <button data-tab="fuel" aria-pressed="false">Fuel: speed budget</button>
+    <button data-tab="model" aria-pressed="false">Shuttle model</button>
+  </div>
+  <div class="grid">
+    <section>
+      <div class="card">
+        <canvas id="cv" role="img" aria-label="3D surface of the score against flight time and fuel, with the current point"></canvas>
+        <div class="row" id="modes">
+          <button data-mode="T" aria-pressed="true">x axis: time T</button>
+          <button data-mode="inv" aria-pressed="false">x axis: 1/T (the score is a plane)</button>
+          <button id="reset">Reset</button>
+        </div>
+        <div class="legend" aria-label="Colour scale: score">
+          <b></b><span style="left:0">−100</span><span style="left:25%">0</span><span style="left:50%">100</span><span style="left:100%">300</span>
+        </div>
+        <p class="hint" id="cap"></p>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <h2>View</h2>
+        <div id="vw"></div>
+
+        <div id="basicbox"><h2>Fuel, time, damage</h2><div id="bs"></div></div>
+
+        <div id="tripbox">
+          <h2>Route</h2>
+          <div id="co"></div>
+          <div id="tr1"></div>
+          <h2>Burn</h2>
+          <div id="tr2"></div>
+          <h2>Add-ons</h2>
+          <div id="tr3"></div>
+        </div>
+
+        <div id="fuelbox"><h2>Fuel</h2><div id="fu"></div></div>
+
+        <h2>Scoring rule</h2>
+        <div id="sc"></div>
+
+        <div id="modelbox">
+          <h2>Shuttle</h2>
+          <div id="sh"></div>
+          <h2>Operating point</h2>
+          <div id="op"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>Result</h2>
+        <div id="bars"></div>
+        <table id="out"></table>
+        <div class="row" id="actions"></div>
+        <p id="formula"></p>
+      </div>
+    </section>
+  </div>
+  <p class="hint">Score = 100·(T<sub>nom</sub>/T − F/F<sub>nom</sub> − 2·D/D<sub>max</sub> + 0.5). With x = 1/T it is linear in (x, F, D), so the best speed is where the highest score plane just touches the reachable curve; switch the x axis to 1/T to see the plane. Trip and model tabs: point mass, no gravity, constant-acceleration burn to the cruise speed, then coast. No braking is modelled because the win is any pass within the win radius of the target.</p>
+</main>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const G0 = 9.8, TRIM = 1.27;                         // standard gravity; fuel factor of a sideways push split over body axes
+const DEF = {
+  BT: 197.4, BF: 38.5, Tnom: 120, Fnom: 75, Dmax: 209200, D: 0,
+  a: 0.13, d: 1255.8, v: 8.4, mass: 3388.7, isp: 80,
+  win: 50, wait: 0, detour: 0, trimdv: 0,
+  sx: -651.0228, sy: 95.1990, sz: -8239.6680, tx: -850, ty: 120, tz: -9530,
+  tmin: 20, fmax: 100, zmax: 100, zmin: -100,
+};
+DEF.k = DEF.mass / (DEF.isp * G0);                   // kg of fuel per m/s of speed gained
+const P = { ...DEF };
+const BENCH = { T: 197.4, F: 38.5, D: 0 };           // offline bench, plan 1, seed 0 (gravity and trims included)
+
+// [box, key, label, min, max, step, unit]; a key listed twice is one value with two sliders
+const SLIDERS = [
+  ["vw",  "tmin",   "Time axis start",             5,     100,    5,     "s"],
+  ["vw",  "fmax",   "Fuel axis top",               10,    150,    5,     "kg"],
+  ["vw",  "zmin",   "Score axis bottom",           -500,  0,      10,    ""],
+  ["vw",  "zmax",   "Score axis top",              100,   1200,   10,    ""],
+  ["bs",  "BT",     "Flight time",                 5,     320,    0.5,   "s"],
+  ["bs",  "BF",     "Fuel used",                   0,     150,    0.1,   "kg"],
+  ["bs",  "D",      "Damage taken",                0,     400000, 500,   "J"],
+  ["tr1", "win",    "Win radius around the target",10,    100,    1,     "m"],
+  ["tr2", "a",      "Burn acceleration",           0.05,  0.4,    0.005, "m/s²"],
+  ["tr2", "v",      "Cruise speed",                1,     25,     0.05,  "m/s"],
+  ["tr3", "wait",   "Wait before burning",         0,     60,     0.5,   "s"],
+  ["tr3", "detour", "Extra path length (detours)", 0,     300,    1,     "m"],
+  ["tr3", "trimdv", "Course-correction speed change", 0,  5,      0.05,  "m/s"],
+  ["fu",  "mass",   "Shuttle mass",                1000,  8000,   10,    "kg"],
+  ["fu",  "isp",    "Specific impulse",            40,    400,    1,     "s"],
+  ["fu",  "v",      "Cruise speed",                1,     25,     0.05,  "m/s"],
+  ["fu",  "trimdv", "Course-correction speed change", 0,  5,      0.05,  "m/s"],
+  ["sc",  "Tnom",   "Nominal time",                60,    240,    1,     "s"],
+  ["sc",  "Fnom",   "Nominal fuel",                25,    150,    1,     "kg"],
+  ["sc",  "Dmax",   "Damage that ends the run",    50000, 400000, 1000,  "J"],
+  ["sh",  "a",      "Burn acceleration",           0.05,  0.4,    0.005, "m/s²"],
+  ["sh",  "k",      "Fuel per m/s of speed gained",2,     8,      0.01,  "kg"],
+  ["sh",  "d",      "Distance to cover",           800,   1800,   0.1,   "m"],
+  ["op",  "v",      "Cruise speed",                1,     25,     0.05,  "m/s"],
+  ["op",  "D",      "Damage taken",                0,     400000, 500,   "J"],
+];
+const FMT = { zmin:0, tmin:0, fmax:0, zmax:0, BT:1, BF:1, D:0, win:0, a:3, v:2, wait:1, detour:0, trimdv:2, mass:0, isp:0, Tnom:0, Fnom:0, Dmax:0, k:2, d:1 };
+const inputs = {}, outputs = [];
+function couple(key) {                               // fuel per m/s, shuttle mass and specific impulse are one fact
+  if (key === "mass" || key === "isp") P.k = P.mass / (P.isp * G0);
+  else if (key === "k") P.isp = P.mass / (P.k * G0);
+}
+function onInput(key, inp) {
+  const x = +inp.value; if (inp.value === "" || !isFinite(x)) return;
+  P[key] = x; couple(key); update();
+}
+for (const [box, key, name, lo, hi, step, unit] of SLIDERS) {
+  const l = document.createElement("label");
+  l.innerHTML = `<span>${name}</span><output></output><input type="range" min="${lo}" max="${hi}" step="${step}">`;
+  const inp = l.querySelector("input"), out = l.querySelector("output");
+  inp.value = P[key]; (inputs[key] ||= []).push(inp); outputs.push([out, unit, key]);
+  inp.addEventListener("input", () => onInput(key, inp));
+  $("#" + box).appendChild(l);
+}
+for (const [label, keys] of [["Start", ["sx", "sy", "sz"]], ["Target", ["tx", "ty", "tz"]]]) {
+  const row = document.createElement("div"); row.className = "coords"; row.innerHTML = `<span>${label}</span>`;
+  for (const key of keys) {
+    const inp = document.createElement("input"); inp.type = "number"; inp.step = "any"; inp.value = P[key]; inp.setAttribute("aria-label", `${label} ${key.slice(1)} (m)`);
+    (inputs[key] ||= []).push(inp); inp.addEventListener("input", () => onInput(key, inp)); row.appendChild(inp);
+  }
+  $("#co").appendChild(row);
+}
+
+// ---- model -----------------------------------------------------------------------------------------------------
+const score = (T, F, D) => 100 * (P.Tnom / T - 2 * D / P.Dmax - F / P.Fnom + 0.5);
+const vmax = () => Math.sqrt(2 * P.a * P.d);                    // faster than this cannot be reached: burn all the way
+function reach(v) {                                              // shuttle model tab: flight time and fuel for a cruise speed
+  const vv = Math.min(v, vmax());
+  return { v: vv, T: vv / (2 * P.a) + P.d / vv, F: P.k * vv };
+}
+function best() {
+  let b = null;
+  for (let v = 0.5; v <= vmax() + 1e-9; v += 0.01) {
+    const r = reach(v), s = score(r.T, r.F, P.D);
+    if (!b || s > b.s) b = { ...r, s };
+  }
+  return b;
+}
+function trip(v = P.v) {                                         // trip and fuel tabs: the whole run from coordinates
+  const geo = Math.hypot(P.tx - P.sx, P.ty - P.sy, P.tz - P.sz);
+  const dAuto = Math.max(geo - P.win, 1), dEff = dAuto + P.detour, vm = Math.sqrt(2 * P.a * dEff), vv = Math.min(v, vm);
+  const tAcc = vv / P.a, sAcc = vv * vv / (2 * P.a), sCoast = Math.max(dEff - sAcc, 0), tCoast = sCoast / vv;
+  const T = P.wait + tAcc + tCoast, dv = vv + TRIM * P.trimdv, F = P.k * dv;
+  return { geo, dAuto, dEff, vm, v: vv, capped: v > vm + 1e-9, tAcc, sAcc, sCoast, tCoast, T, dv, F, s: score(T, F, P.D) };
+}
+
+// ---- view ------------------------------------------------------------------------------------------------------
+let tab = "basic", mode = "T", yaw = -0.75, pitch = 0.55, zoom = 1;
+const cv = $("#cv"), g = cv.getContext("2d");
+const RANGE = { T: [DEF.tmin, 320], inv: [1000 / 320, 1000 / DEF.tmin], F: [0, DEF.fmax], z: [-100, DEF.zmax] };
+const xOf = T => mode === "T" ? T : 1000 / T;
+const TOf = x => mode === "T" ? x : 1000 / x;
+const nrm = (v, [lo, hi]) => 2 * (v - lo) / (hi - lo) - 1;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let W = 0, H = 0;
+
+function nice(lo, hi, n) {                                       // round tick values inside [lo, hi]
+  const raw = (hi - lo) / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p, st = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6));
+  return out;
+}
+function proj(x, y, z) {
+  const X = nrm(x, RANGE[mode]), Y = nrm(y, RANGE.F), Z = nrm(Math.max(RANGE.z[0], Math.min(RANGE.z[1], z)), RANGE.z);
+  const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const x1 = X * cyw - Y * syw, y1 = X * syw + Y * cyw;
+  const S = Math.min(W, H * 1.25) * 0.215 * zoom;
+  return [W / 2 + x1 * S, H * 0.47 - (y1 * sp + Z * cp) * S, y1 * cp - Z * sp];
+}
+const STOPS = [[-100, [192, 57, 43]], [0, [243, 234, 205]], [100, [37, 99, 235]], [300, [30, 58, 138]]];   // score -> colour, fixed
+function ramp(s) {
+  if (s <= STOPS[0][0]) return `rgb(${STOPS[0][1]})`;
+  for (let i = 1; i < STOPS.length; i++) {
+    const [s0, c0] = STOPS[i - 1], [s1, c1] = STOPS[i];
+    if (s <= s1) { const u = (s - s0) / (s1 - s0); return `rgb(${c0.map((c, k) => Math.round(c + (c1[k] - c) * u)).join(",")})`; }
+  }
+  return `rgb(${STOPS[STOPS.length - 1][1]})`;
+}
+function clipZ(poly, lo, hi) {                                   // cut a polygon of {x, y, s} to lo <= s <= hi
+  for (const [keep, lim] of [[v => v >= lo, lo], [v => v <= hi, hi]]) {
+    const inp = poly; poly = [];
+    for (let i = 0; i < inp.length; i++) {
+      const a = inp[i], b = inp[(i + 1) % inp.length], ia = keep(a.s), ib = keep(b.s);
+      if (ia) poly.push(a);
+      if (ia !== ib) { const t = (lim - a.s) / (b.s - a.s); poly.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, s: lim }); }
+    }
+  }
+  return poly;
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  W = cv.clientWidth; H = Math.min(Math.round(W * 0.78), 640);
+  cv.style.height = H + "px"; cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const fg = css("--fg"), mut = css("--mut");
+  const [x0, x1] = RANGE[mode], [y0, y1] = RANGE.F, [z0, z1] = RANGE.z, N = 36, cells = [], grid = [];
+  for (let i = 0; i <= N; i++) { grid.push([]); for (let j = 0; j <= N; j++) {
+    const x = x0 + (x1 - x0) * i / N, y = y0 + (y1 - y0) * j / N;
+    grid[i].push({ x, y, s: score(TOf(x), y, P.D) });
+  } }
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const poly = clipZ([grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]], z0, z1);
+    if (poly.length < 3) continue;                                // the whole cell is outside the score axis
+    const q = poly.map(v => proj(v.x, v.y, v.s));
+    cells.push({ q, d: q.reduce((a, p) => a + p[2], 0) / q.length, s: poly.reduce((a, v) => a + v.s, 0) / poly.length });
+  }
+  cells.sort((a, b) => b.d - a.d);                              // far first
+  for (const c of cells) {
+    g.beginPath(); c.q.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath();
+    g.fillStyle = ramp(c.s); g.fill(); g.strokeStyle = "rgba(0,0,0,.10)"; g.lineWidth = 0.5; g.stroke();
+  }
+  // the box, its ticks and titles
+  const edges = [[[x0,y0,z0],[x1,y0,z0]],[[x1,y0,z0],[x1,y1,z0]],[[x1,y1,z0],[x0,y1,z0]],[[x0,y1,z0],[x0,y0,z0]],
+                 [[x0,y0,z1],[x1,y0,z1]],[[x1,y0,z1],[x1,y1,z1]],[[x1,y1,z1],[x0,y1,z1]],[[x0,y1,z1],[x0,y0,z1]],
+                 [[x0,y0,z0],[x0,y0,z1]],[[x1,y0,z0],[x1,y0,z1]],[[x1,y1,z0],[x1,y1,z1]],[[x0,y1,z0],[x0,y1,z1]]];
+  g.strokeStyle = mut; g.globalAlpha = 0.55; g.lineWidth = 1;
+  for (const [a, b] of edges) { const p = proj(...a), q = proj(...b); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke(); }
+  g.globalAlpha = 1; g.fillStyle = mut; g.font = "11px system-ui, sans-serif"; g.textAlign = "center";
+  const tick = (x, y, z, text, dx = 0, dy = 12) => { const p = proj(x, y, z); g.fillText(text, p[0] + dx, p[1] + dy); };
+  const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, cx = proj(mx, my, z0)[0];
+  const nearY = proj(mx, y0, z0)[2] < proj(mx, y1, z0)[2] ? y0 : y1;          // floor edges that face the viewer
+  const nearX = proj(x0, my, z0)[2] < proj(x1, my, z0)[2] ? x0 : x1;
+  const side = proj(nearX, my, z0)[0] >= cx ? 1 : -1;
+  const left = [[x0, y0], [x0, y1], [x1, y0], [x1, y1]].sort((a, b) => proj(a[0], a[1], z0)[0] - proj(b[0], b[1], z0)[0])[0];
+  nice(RANGE.T[0], RANGE.T[1], 3).forEach(v => tick(xOf(v), nearY, z0, v, 0, 14));
+  nice(y0, y1, 3).forEach(v => tick(nearX, v, z0, v, 14 * side, 4));
+  nice(z0, z1, 4).forEach(v => tick(left[0], left[1], v, v, -14, 4));
+  g.fillStyle = fg; g.font = "600 12px system-ui, sans-serif";
+  tick(mx, nearY, z0, mode === "T" ? "flight time T (s)" : "1000 / T  (ticks show T in s)", 0, 32);
+  tick(nearX, my, z0, "fuel F (kg)", 46 * side, 24);
+  tick(left[0], left[1], z1, "score", -4, -10);
+
+  const mark = (T, F, D, color, shape, label, dy) => {
+    const s = score(T, F, D), p = proj(xOf(T), F, s), f = proj(xOf(T), F, z0);
+    g.strokeStyle = color; g.globalAlpha = 0.6; g.setLineDash([3, 3]); g.lineWidth = 1; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(f[0], f[1]); g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1; g.fillStyle = color; g.strokeStyle = css("--bg"); g.lineWidth = 2; g.beginPath();
+    if (shape === "dot") g.arc(p[0], p[1], 7, 0, 7);
+    else if (shape === "sq") g.rect(p[0] - 6, p[1] - 6, 12, 12);
+    else { g.moveTo(p[0], p[1] - 9); g.lineTo(p[0] + 9, p[1]); g.lineTo(p[0], p[1] + 9); g.lineTo(p[0] - 9, p[1]); g.closePath(); }
+    g.fill(); g.stroke();
+    g.fillStyle = fg; g.font = "600 12px system-ui, sans-serif"; g.textAlign = "left"; g.fillText(label, p[0] + 12, p[1] + dy);
+  };
+  if (tab !== "model") {                                         // one point, set by the tab
+    const pt = tab === "basic" ? { T: P.BT, F: P.BF } : trip();
+    mark(pt.T, pt.F, P.D, "#f59e0b", "dot", `score ${score(pt.T, pt.F, P.D).toFixed(1)}`, -12);
+    return {};
+  }
+  const cur = [];                                                // reachable curve, lifted onto the surface
+  for (let v = 0.5; v <= vmax() + 1e-9; v += 0.05) {
+    const r = reach(v); if (r.T > RANGE.T[1] || r.T < RANGE.T[0] || r.F > RANGE.F[1]) continue;
+    cur.push(proj(xOf(r.T), r.F, score(r.T, r.F, P.D)));
+  }
+  if (cur.length) { g.lineWidth = 3; g.strokeStyle = fg; g.beginPath(); cur.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); }
+  const o = reach(P.v), b = best();
+  mark(BENCH.T, BENCH.F, BENCH.D, "#a855f7", "sq", `bench ${score(BENCH.T, BENCH.F, BENCH.D).toFixed(1)}`, 18);
+  mark(b.T, b.F, P.D, "#16a34a", "dia", `best ${b.s.toFixed(1)}`, 4);
+  mark(o.T, o.F, P.D, "#f59e0b", "dot", `you ${score(o.T, o.F, P.D).toFixed(1)}`, -12);
+  return { o, b };
+}
+
+// ---- readouts --------------------------------------------------------------------------------------------------
+const CAPTIONS = {
+  basic: "Surface height and colour are the score for zero damage; the damage slider lowers it. The dot is the time, fuel and damage set on the sliders; it starts at the offline bench result.",
+  trip: "The dot is the run built up in the panel: the distance comes from the start and target coordinates, then the burn, the cruise, and whatever you add on. Send it to the Basic tab to adjust it by hand.",
+  fuel: "Fuel is paid per m/s of speed gained: shuttle mass over specific impulse. The dot is the run from the Trip tab with the speed budget set here; the table shows what a change of speed is worth in score.",
+  model: "The thick curve is every speed the shuttle can fly, with the burn time and fuel the sliders imply. Orange is your speed, green the best speed, purple the offline bench.",
+};
+const BOXES = { basic: "#basicbox", trip: "#tripbox", fuel: "#fuelbox", model: "#modelbox" };
+const row = (name, val, cls = "") => `<tr class="${cls}"><td>${name}</td><td>${val}</td></tr>`;
+const f1 = x => x.toFixed(1), n0 = x => Math.round(x).toLocaleString();
+
+function sync(force) {
+  for (const k in inputs) inputs[k].forEach(i => { if (force || (document.activeElement !== i && +i.value !== P[k])) i.value = P[k]; });
+}
+function update(force = false) {
+  P.tmin = Math.min(P.tmin, 300); RANGE.T[0] = P.tmin; RANGE.inv[1] = 1000 / P.tmin; RANGE.F[1] = P.fmax; RANGE.z[0] = P.zmin; RANGE.z[1] = P.zmax;
+  inputs.D.forEach(i => { i.max = P.Dmax; }); P.D = Math.min(P.D, P.Dmax);
+  inputs.BT[0].min = P.tmin; P.BT = Math.max(P.BT, P.tmin); inputs.BF[0].max = P.fmax; P.BF = Math.min(P.BF, P.fmax);
+  sync(force);
+  for (const [out, unit, key] of outputs) out.textContent = (+P[key]).toLocaleString(undefined, { minimumFractionDigits: FMT[key], maximumFractionDigits: FMT[key] }) + (unit ? " " + unit : "");
+  for (const t in BOXES) $(BOXES[t]).hidden = t !== tab;
+  document.querySelectorAll("#tabs [data-tab]").forEach(x => x.setAttribute("aria-pressed", x.dataset.tab === tab));
+  $("#cap").textContent = CAPTIONS[tab];
+  const { o, b } = draw();
+  $("#bars").innerHTML = ""; $("#actions").innerHTML = "";
+
+  if (tab === "basic") {
+    const t = [100 * P.Tnom / P.BT, -100 * P.BF / P.Fnom, -200 * P.D / P.Dmax, 50], s = t.reduce((a, c) => a + c);
+    const bar = (name, v) => `<div class="bar"><span>${name}</span><i><b style="${v >= 0 ? "left:50%" : "right:50%"};width:${Math.min(Math.abs(v), 100) / 2}%;background:${v >= 0 ? "var(--ok)" : "var(--bad)"}"></b></i><em>${f1(v)}</em></div>`;
+    $("#bars").innerHTML = bar("Time", t[0]) + bar("Fuel", t[1]) + bar("Damage", t[2]) + bar("Base", t[3]);
+    $("#out").innerHTML = row("Time term", `100·${P.Tnom}/${f1(P.BT)} = ${f1(t[0])}`) + row("Fuel term", `−100·${f1(P.BF)}/${P.Fnom} = ${f1(t[1])}`) +
+      row("Damage term", `−200·${n0(P.D)}/${n0(P.Dmax)} = ${f1(t[2])}`) + row("Base", "+50.0") + row("Score", f1(s), "total");
+    $("#formula").innerHTML = `<code>score = 100·(${P.Tnom}/T − F/${P.Fnom} − 2·D/${n0(P.Dmax)} + 0.5)</code>`;
+    return;
+  }
+
+  if (tab === "trip" || tab === "fuel") {
+    const r = trip(), segs = [["wait", "Waiting", P.wait], ["accel", "Accelerating", r.tAcc], ["cruise", "Cruising", r.tCoast]];
+    if (tab === "trip") {
+      $("#bars").innerHTML = `<div class="tl" title="Flight time">${segs.map(([c, , t]) => `<span style="width:${100 * t / r.T}%;background:var(--${c === "cruise" ? "cruise" : c === "accel" ? "accel" : "wait"})"></span>`).join("")}</div>` +
+        `<div class="lg">${segs.map(([c, n, t]) => `<span><i class="key" style="background:var(--${c === "cruise" ? "cruise" : c === "accel" ? "accel" : "wait"})"></i>${n} ${f1(t)} s</span>`).join("")}</div>`;
+      $("#out").innerHTML =
+        row("Straight line, start to target", `${f1(r.geo)} m`) +
+        row("− win radius", `−${P.win} m`) +
+        row("Distance to cover", `${f1(r.dAuto)} m`, "sub") +
+        row("+ detours", `+${P.detour} m`) +
+        row("Path length", `${f1(r.dEff)} m`, "sub") +
+        row(`Speed reached${r.capped ? " (limit: the burn never ends)" : ""}`, `${r.v.toFixed(2)} m/s`) +
+        row(`Time accelerating (${r.v.toFixed(2)} ÷ ${P.a})`, `${f1(r.tAcc)} s`) +
+        row("Distance while accelerating", `${f1(r.sAcc)} m`) +
+        row("Distance left at cruise", `${f1(r.sCoast)} m`) +
+        row("Time cruising", `${f1(r.tCoast)} s`) +
+        row("+ wait before burning", `${f1(P.wait)} s`) +
+        row("Flight time T", `${f1(r.T)} s`, "total") +
+        row("Fuel F", `${f1(r.F)} kg`) +
+        row("Score", f1(r.s), "total");
+      $("#actions").innerHTML = `<button id="send">Send time and fuel to the Basic tab</button>`;
+      $("#send").onclick = () => { P.BT = Math.min(Math.max(r.T, P.tmin), 320); P.BF = Math.min(r.F, P.fmax); tab = "basic"; update(true); };
+    } else {
+      const up = trip(P.v + 1), dn = trip(Math.max(P.v - 1, 1));
+      $("#out").innerHTML =
+        row("Speed gained in the main burn", `${r.v.toFixed(2)} m/s`) +
+        row(`Course corrections ${P.trimdv.toFixed(2)} m/s × ${TRIM}`, `${(TRIM * P.trimdv).toFixed(2)} m/s`) +
+        row("Speed budget", `${r.dv.toFixed(2)} m/s`, "sub") +
+        row(`Fuel per m/s (${n0(P.mass)} kg ÷ (${P.isp} s × ${G0}))`, `${P.k.toFixed(2)} kg`) +
+        row("Fuel F", `${f1(r.F)} kg`, "total") +
+        row("Fuel term in the score", `${f1(-100 * r.F / P.Fnom)}`) +
+        row("Each m/s of main burn costs", `${f1(100 * P.k / P.Fnom)} points`) +
+        row("Each m/s of corrections costs", `${f1(100 * P.k * TRIM / P.Fnom)} points`) +
+        row("Each second of flight costs (now)", `${f1(100 * P.Tnom / (r.T * r.T))} points`) +
+        row("Score with +1 m/s of cruise speed", `${f1(up.s)}  (${up.s - r.s >= 0 ? "+" : ""}${(up.s - r.s).toFixed(1)})`) +
+        row("Score with −1 m/s of cruise speed", `${f1(dn.s)}  (${dn.s - r.s >= 0 ? "+" : ""}${(dn.s - r.s).toFixed(1)})`) +
+        row("Score", f1(r.s), "total");
+    }
+    $("#formula").innerHTML = `<code>fuel = mass/(Isp·g)·(Δv<sub>main</sub> + ${TRIM}·Δv<sub>corrections</sub>)</code>`;
+    return;
+  }
+
+  const s = score(o.T, o.F, P.D), capped = P.v > vmax() + 1e-9, t = [100 * P.Tnom / o.T, -100 * o.F / P.Fnom, -200 * P.D / P.Dmax, 50];
+  $("#out").innerHTML =
+    row("Burn time", f1(o.v / P.a) + " s") + row("Flight time T", f1(o.T) + " s") + row("Fuel F", f1(o.F) + " kg") +
+    row("Time term", f1(t[0])) + row("Fuel term", f1(t[1])) + row("Damage term", f1(t[2])) + row("Base", "+50.0") +
+    row("Score", f1(s), "total") +
+    row(`<span class="key" style="background:#16a34a"></span>Best speed`, `${b.v.toFixed(2)} m/s → ${f1(b.s)}`) +
+    row(`<span class="key" style="background:#a855f7"></span>Offline bench`, `T 197.4 s, F 38.5 kg → ${f1(score(BENCH.T, BENCH.F, 0))}`) +
+    (capped ? row("Note", `speed capped at ${vmax().toFixed(1)} m/s: the burn never ends`) : "");
+  $("#formula").innerHTML = `<code>score = 100·(${P.Tnom}/T − F/${P.Fnom} − 2·${n0(P.D)}/${n0(P.Dmax)} + 0.5)</code>`;
+}
+
+// ---- interaction -----------------------------------------------------------------------------------------------
+let drag = null;
+cv.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => {
+  if (!drag) return;
+  yaw += (e.clientX - drag[0]) * 0.008; pitch = Math.max(0.05, Math.min(1.5, pitch + (e.clientY - drag[1]) * 0.008));
+  drag = [e.clientX, e.clientY]; update();
+});
+cv.addEventListener("pointerup", () => { drag = null; });
+cv.addEventListener("wheel", e => { e.preventDefault(); zoom = Math.max(0.5, Math.min(2.5, zoom * (e.deltaY < 0 ? 1.08 : 0.93))); update(); }, { passive: false });
+document.querySelectorAll("#modes [data-mode]").forEach(b => b.addEventListener("click", () => {
+  mode = b.dataset.mode; document.querySelectorAll("#modes [data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b)); update();
+}));
+document.querySelectorAll("#tabs [data-tab]").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; update(); }));
+$("#reset").addEventListener("click", () => { Object.assign(P, DEF); yaw = -0.75; pitch = 0.55; zoom = 1; update(true); });
+window.addEventListener("resize", () => update());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update());
+update(true);
+</script>
+</body>
+</html>

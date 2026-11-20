@@ -1,0 +1,52 @@
+"""Plan 16 as flown in the morning live runs (36.0 / 35.8), rebuilt from Antigravity's edit log."""
+from Systems.plans.common import load_plan_config
+from Systems.plans.plan_10_real_calibrated.config import _DEFAULTS as BASE
+
+_DEFAULTS = {
+    **BASE,
+    "name": "v16_morning",
+    "plan_number": 17,
+    "burn": "steer",
+    "camera": "off",
+    "frame_accel": True,
+    "timed_burns": True,
+    "predict_attitude": True,
+    "a_burn": 0.13,
+    "w_turn": 0.04,
+    "accel_till_speed": 8.9,
+    "vcs": [8.4, 8.9, 9.2],
+    "launch_burn_height_m": 10.0,
+    "launch_burn_cone_deg": 8.0,
+    "route_handoff_s": 14.0,
+    "route_expected_tracks": 500,
+    "route_min_samples": 3,
+    "route_max_track_age_s": 9.0,
+    "route_max_sigma_m": 12.0,
+    "route_ready_tube_m": 145.0,
+    "route_max_age_s": 1.2,
+    "route_keep_on_miss": True,
+    "r_sh": 6.0,
+    "guard_plan": False,
+    "guard_trust_plan": True,       # ignore a rock the route's own burn already misses (bench holdout: guard fuel -60%, 0 hits)
+    "guard_mode": "escape",
+    "guard_horizon_s": 30.0,
+    "guard_range_m": 450.0,
+    "guard_abort_s": 24.0,
+    "guard_assume_burn": True,
+    "guard_translation_only": True,
+    "guard_pulse_accel": 0.05,
+    "guard_sigma": 1.0,
+    "guard_max_sigma_m": 15.0,
+    "guard_release_m": 1.5,
+    "coast_docking_radius_m": 24.0,
+    "local_coast_deadline_s": 198.0,
+    "ignite_dv_mps": 0.30,
+    "stop_dv_mps": 0.12,
+    "dt_plan": 1.0,
+    "arrival_targets_s": [180.0, 184.0, 188.0, 192.0, 196.0, 199.0],
+    "planning_time_s": 194.0,
+    "fuel_goal_kg": 43.0,
+    "review_horizon_s": 30.0,
+}
+
+CONFIG = load_plan_config(__file__, _DEFAULTS)

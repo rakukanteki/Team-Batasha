@@ -1,0 +1,14 @@
+{
+  "name": "v11",
+  "plan_number": 11,
+  "variant": "lift_y20",
+  "burn": "aligned_y",
+  "camera": "forward_y",
+  "lift_height_m": 10.0,
+  "accel_till_speed": 20.0,
+  "apf_gain": 20000.0,
+  "apf_max_offset_m": 32.0,
+  "w_turn": 0.0,
+  "timed_burns": false,
+  "robust_samples": 0
+}
