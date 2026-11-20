@@ -13,9 +13,13 @@ This folder is an exact copy of the files that flew runs `261120_082545_FINAL_SU
 
 1. Put this folder in Space Teams PRO as the `STU4-Solution` asset repo, at `AppData/Local/SimDynamX/STPro/Assets/Repos/STU4-Solution`.
 2. Open `Repos/STU4-Sim/Sims/FINAL_SUBMISSION.simconf` in Space Teams PRO 0.56.0. In the lobby, choose the Orbit Pawn role and press Start Simulation.
-3. The controller needs `numpy` and `scipy` in the Space Teams Python runtime.
+3. The controller needs `numpy` and `scipy` in the Space Teams Python runtime (`requirements.txt`).
 
 ## Other folders
 
-- `tools/`: offline benchmarks and replay utilities used during development. Not needed in the sim.
-- `tests/`: offline tests. Some need the official upstream repos as Git submodules, which are not included here.
+## Files
+
+- `Controller.py`, `Systems/`: the controller code the sim runs. All plans in `Systems/plans/` are imported by the planner registry, so they all stay.
+- `requirements.txt`: Python packages the controller needs.
+- `Batasha-sim-logs.zip`: the two engine log folders.
+- `CLAIM.md`: the claimed time, fuel and damage.
