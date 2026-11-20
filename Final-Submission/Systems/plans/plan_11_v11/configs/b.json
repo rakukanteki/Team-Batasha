@@ -1,9 +1,0 @@
-{
-  "name": "v11",
-  "plan_number": 11,
-  "variant": "b",
-  "w_turn": 0.035,
-  "ignore_per_rock": true,
-  "timed_burns": true,
-  "robust_samples": 0
-}
